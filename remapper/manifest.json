@@ -4,13 +4,7 @@
   "manifest_version": 3,
   "description": "US keyboard with emacs-like cursor movement",
   "background": {
-    "service_worker": "background.js",
-    "scripts": [
-      "preamble.js",
-      "engine.js",
-      "keymap.js",
-      "main.js"
-    ]
+    "service_worker": "background.js"
   },
   "permissions": [
       "input", "tabs", "storage"

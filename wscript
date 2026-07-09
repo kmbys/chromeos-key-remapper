@@ -76,8 +76,12 @@ def _build_ime(ctx, name, spec):
 
     # build manifest
 
-    manifests = [out.find_or_declare(ime_name).find_or_declare('manifest.json')
-                    for ime_name in ime_stack]
+    manifests = []
+    for ime_name in ime_stack:
+        ime_out = out.find_or_declare(ime_name)
+        manifests.append(ime_out.find_or_declare('manifest.json'))
+        if imes_root.find_dir(ime_name).find_node('background_scripts.json'):
+            manifests.append(ime_out.find_or_declare('background_scripts.json'))
     manifest_env = ctx.env.derive()
     manifest_env.identifier = name
     manifest_env.name = spec['name']
@@ -104,19 +108,28 @@ class manifest(Task.Task):
 
     Manifest V3 only allows a single background service worker, so the
     collected scripts are loaded via importScripts from a generated
-    background.js. Submanifests may keep listing their scripts under
-    background.scripts (Chrome ignores the key in MV3); an MV3-only
-    submanifest that declares just background.service_worker is treated
-    as a single-script IME.
+    background.js. The scripts of an IME are found, in order of
+    precedence: in a background_scripts.json file next to its manifest
+    (used by the remapper itself, whose MV3 manifest can't list them),
+    under background.scripts (MV2 IMEs), or as the single
+    background.service_worker script (MV3 IMEs).
     '''
 
     def run(self):
         target = self.outputs[0]
         background_target = self.outputs[1]
         out = target.parent
-        submanifests = OrderedDict([(path, path.read_json()) for path in self.inputs])
+        submanifests = OrderedDict()
+        script_lists = {}
+        for path in self.inputs:
+            if path.name == 'manifest.json':
+                submanifests[path] = path.read_json()
+            elif path.name == 'background_scripts.json':
+                script_lists[path.parent] = path.read_json()
 
-        def background_scripts(submanifest):
+        def background_scripts(path, submanifest):
+            if path.parent in script_lists:
+                return script_lists[path.parent]
             background = submanifest.get('background', {})
             if 'scripts' in background:
                 return background['scripts']
@@ -126,7 +139,7 @@ class manifest(Task.Task):
 
         scripts = [path.parent.find_or_declare(script).path_from(out)
                    for path, submanifest in submanifests.items()
-                   for script in background_scripts(submanifest)]
+                   for script in background_scripts(path, submanifest)]
 
         permissions = [permission
                        for path, submanifest in submanifests.items()
