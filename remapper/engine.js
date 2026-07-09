@@ -48,9 +48,21 @@ Remapper.Engine = function (keymap) {
     stopKeepAlive();
   }
 
+  // URL prefixes of windows in which no remapping should happen.
   const urlBlacklist = [
-    'chrome-extension://pnhechapfaindjhompbnflcldabbghjo/html/crosh.html'
+    // crosh as it appeared before ChromeOS moved it to a System Web App
+    'chrome-extension://pnhechapfaindjhompbnflcldabbghjo/html/crosh.html',
+    // crosh as a System Web App
+    'chrome-untrusted://crosh/',
+    // the Terminal app; a terminal wants raw keys for the same reason crosh does
+    'chrome-untrusted://terminal/'
   ];
+
+  function isBlacklisted(url) {
+    return urlBlacklist.some(function(prefix) {
+      return url.indexOf(prefix) === 0;
+    });
+  }
 
   const nullKeyData = {
     'altKey': false,
@@ -132,7 +144,7 @@ Remapper.Engine = function (keymap) {
       return false;
     }
 
-    if (lastFocusedWindowUrl && urlBlacklist.indexOf(lastFocusedWindowUrl) !== -1) {
+    if (lastFocusedWindowUrl && isBlacklisted(lastFocusedWindowUrl)) {
       // don't remap in blacklisted windows
       return false;
     }
