@@ -3,6 +3,19 @@ Remapper.Engine = function (keymap) {
   var lastFocusedWindowUrl = null;
   const debug = false;
 
+  // The MV3 service worker can be terminated at any time and revived
+  // by a key event alone, in which case onFocus won't fire again.
+  // Restore the state saved by the last handleFocus call so the event
+  // can still be remapped.
+  chrome.storage.session.get(['contextId', 'lastFocusedWindowUrl'], function(items) {
+    if (contextId === -1 && typeof items.contextId === 'number') {
+      contextId = items.contextId;
+    }
+    if (lastFocusedWindowUrl === null && items.lastFocusedWindowUrl) {
+      lastFocusedWindowUrl = items.lastFocusedWindowUrl;
+    }
+  });
+
   const urlBlacklist = [
     'chrome-extension://pnhechapfaindjhompbnflcldabbghjo/html/crosh.html'
   ];
@@ -58,12 +71,14 @@ Remapper.Engine = function (keymap) {
   // be a delay due to the API being async.
   this.handleFocus = function(context) {
     contextId = context.contextID;
+    chrome.storage.session.set({contextId: contextId});
     chrome.windows.getLastFocused({
       populate: true,
       windowTypes: ['popup', 'normal', 'panel', 'app', 'devtools']
     }, function(window) {
       if (window && window.tabs.length > 0) {
         lastFocusedWindowUrl = window.tabs[0].url;
+        chrome.storage.session.set({lastFocusedWindowUrl: lastFocusedWindowUrl});
       }
     });
   }
