@@ -16,6 +16,38 @@ Remapper.Engine = function (keymap) {
     }
   });
 
+  // Restoring state isn't enough on its own: ChromeOS doesn't wait for a
+  // terminated worker to wake up before dispatching a key event, so keys
+  // pressed while the worker is asleep fall through to the browser's
+  // default handling. Prevent the worker from idling out while the IME is
+  // active by calling a cheap extension API every 20s; each call resets
+  // Chrome's 30s idle timer.
+  var keepAliveTimer = null;
+
+  function startKeepAlive() {
+    if (keepAliveTimer !== null) {
+      return;
+    }
+    keepAliveTimer = setInterval(function() {
+      chrome.runtime.getPlatformInfo(function() {});
+    }, 20000);
+  }
+
+  function stopKeepAlive() {
+    if (keepAliveTimer !== null) {
+      clearInterval(keepAliveTimer);
+      keepAliveTimer = null;
+    }
+  }
+
+  this.handleActivate = function() {
+    startKeepAlive();
+  }
+
+  this.handleDeactivated = function() {
+    stopKeepAlive();
+  }
+
   const urlBlacklist = [
     'chrome-extension://pnhechapfaindjhompbnflcldabbghjo/html/crosh.html'
   ];
@@ -69,7 +101,11 @@ Remapper.Engine = function (keymap) {
 
   // grab the last focused window's URL for blacklisting. note that there will
   // be a delay due to the API being async.
+  // Also (re)start the keepalive from focus and key events: they are the
+  // wake-up paths when the worker somehow died while the IME was active,
+  // in which case onActivate won't fire again.
   this.handleFocus = function(context) {
+    startKeepAlive();
     contextId = context.contextID;
     chrome.storage.session.set({contextId: contextId});
     chrome.windows.getLastFocused({
@@ -84,6 +120,7 @@ Remapper.Engine = function (keymap) {
   }
 
   this.handleKeyEvent = function(engineID, keyData) {
+    startKeepAlive();
     if (keyData.type === "keydown") {
       if (debug) {
         console.log(keyData.type, keyData.key, keyData.code, keyData);
